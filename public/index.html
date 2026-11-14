@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WEB PROJEKT 2</title>
+
+    <style>
+        body {
+        font-family: Arial, sans-serif;
+        background: #f4f6fa;
+        margin: 0;
+        padding: 40px 20px;
+        color: #202938;
+        }
+
+        main {
+        max-width: 720px;
+        margin: auto;
+        }
+
+        .card {
+        background: white;
+        padding: 28px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px #00000010;
+        }
+
+        h1 { margin-top: 0; }
+
+        label {
+        display: block;
+        margin: 16px 0 6px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+        width: 100%;
+        padding: 12px;
+        box-sizing: border-box;
+        border: 1px solid #ccd2dc;
+        border-radius: 6px;
+        }
+
+        button {
+        margin-top: 20px;
+        padding: 12px 20px;
+        background: #2563eb;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+        }
+
+        .switch {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 20px 0;
+        }
+
+        .switch label { margin: 0; }
+
+        #result {
+        margin-top: 24px;
+        padding: 15px;
+        background: #edf2f8;
+        border-radius: 6px;
+        display: none;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        }
+
+        #bruteResult {
+        margin-top: 24px;
+        padding: 15px;
+        background: #edf2f8;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        min-height: 20px;
+    }
+
+    button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Sigurnost web</h1>
+        <p>Projekt 2</p>
+
+        <section class="card">
+            <h2>SQL Injection</h2>
+
+            <p>
+                Demonstracija SQL umetanja
+            </p>
+
+            <div class="switch">
+                <input type="checkbox" id="vulnerable" checked>
+                <label for="vulnerable">Ranjivost ukljucena</label>
+            </div>
+
+            <form id="loginForm">
+                <label for="username">Ime</label>
+                <input type="text" id="username" value="admin" required>
+
+                <label for="password">Lozinka</label>
+                <input type="password" id="password" value="pogresna" required>
+
+                <button type="submit">Prijava</button>
+            </form>
+
+            <div id="result"></div>
+        </section>
+
+        <section class="card">
+            <h2>Brute Force</h2>
+
+            <p> Demonstracija brute force napada</p>
+
+            <div class="switch">
+                <input type="checkbox" id="bruteForceVulnerable" checked>
+                <label for="bruteForceVulnerable">Ranjivost ukljucena</label>
+            </div>
+
+            <p>Testni korisnik: leon</p>
+
+            <button id="bruteForceButton">Pokreni brute force</button>
+
+            <div id="bruteResult"></div>
+        </section>
+    </main>
+
+    <script>
+        const form = document.getElementById("loginForm");
+        const result = document.getElementById("result");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const vulnerable = document.getElementById("vulnerable").checked;
+
+            try {
+                const response = await fetch ("/api/sql-injection", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        vulnerable
+                    })
+                });
+
+                const data = await response.json();
+
+                result.style.display = "block";
+
+                result.textContent = 
+                    data.message + 
+                    (data.user ? "\nKorisnik: " + data.user.username + "\nUloga: " + data.user.role : "")
+                    +
+                    (data.sql ? "\n\n SQL:\n" + data.sql : "");
+            } catch {
+                result.style.display = "block";
+                result.textContent = "Greska";
+            }
+        });
+    </script>
+
+    
+    <script>
+        const bruteForceButton = document.getElementById("bruteForceButton");
+
+        const bruteResult = document.getElementById("bruteResult");
+
+        const passwordsToTry = [
+            "123456",
+            "password",
+            "qwerty",
+            "abc123",
+            "leon123"
+        ];
+
+        async function sendRequest(url, body) {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status);
+            }
+
+            return response.json();
+        }
+
+        bruteForceButton.addEventListener("click", async () => {
+            const vulnerable = document.getElementById("bruteForceVulnerable").checked;
+
+            bruteForceButton.disabled = true;
+            bruteResult.textContent = "Pokretanje demonstracije...\n";
+
+            try {
+                const start = await sendRequest("/api/brute-force/start", { vulnerable });
+
+                let output = "Korisnik: " + start.username + "\n";
+                output += "Ranjivost: " + (vulnerable ? "ukljucena" : "iskljucena") + "\n\n";
+
+                let finalStatus = "failed";
+
+                for (let i = 0; i < passwordsToTry.length; i++) {
+                    const password = passwordsToTry[i];
+
+                    const result = await sendRequest("/api/brute-force/attempt",
+                        {
+                            sessionId: start.sessionId,
+                            password
+                        }
+                    );
+
+                    output += `Pokusaj ${i + 1}: ${password} - ${result.message}\n`;
+
+                    bruteResult.textContent = output;
+
+                    finalStatus = result.status;
+
+                    if (result.status === "success" ||
+                        result.status === "locked") {
+                        break;
+                    }
+                }
+
+                output += "\n";
+
+                if (finalStatus === "success") {
+                    output += "Napad uspjesan";
+                    bruteResult.style.color = "green";
+                } else if (finalStatus === "locked") {
+                    output += "Napad sprijecen";
+                    bruteResult.style.color = "red";
+                } else {
+                    output += "Lozinka nije pogodena";
+                    bruteResult.style.color = "red";
+                }
+
+                bruteResult.textContent = output;
+
+            } catch (error) {
+                bruteResult.textContent =
+                    "Greska: " + error.message;
+            } finally {
+                bruteForceButton.disabled = false;
+            }
+        });
+    </script>
+
+
+</body>
+</html>
