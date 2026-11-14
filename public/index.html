@@ -132,6 +132,8 @@
 
             <button id="bruteForceButton">Pokreni brute force</button>
 
+            <button type="button" id="resetAccountButton">Resetiraj racun</button>   
+
             <div id="bruteResult"></div>
         </section>
     </main>
@@ -264,8 +266,36 @@
                 bruteForceButton.disabled = false;
             }
         });
+
+
+        const resetAccountButton = document.getElementById("resetAccountButton");
+
+        resetAccountButton.addEventListener("click", async () => {
+            resetAccountButton.disabled = true;
+            bruteForceButton.disabled = true;
+
+            try {
+                const response = await fetch("/api/brute-force/reset", {
+                    method: "POST"
+                });
+
+                if (!response.ok) {
+                    throw new Error("Resetiranje nije uspjelo");
+                }
+
+                const data = await response.json();
+
+                bruteResult.textContent = data.message;
+                bruteResult.style.color = "green";
+
+            } catch {
+                bruteResult.textContent = "Greska prilikom resetiranja.";
+                bruteResult.style.color = "red";
+            } finally {
+                resetAccountButton.disabled = false;
+                bruteForceButton.disabled = false;
+            }
+        });
     </script>
-
-
 </body>
 </html>

@@ -38,11 +38,7 @@ interface User {
 app.post("/api/sql-injection", (req, res) => {
     const {username, password, vulnerable} = req.body;
 
-    if (
-        typeof username !== "string" ||
-        typeof password !== "string" ||
-        typeof vulnerable !== "boolean"
-    ) {
+    if (typeof username !== "string" || typeof password !== "string" || typeof vulnerable !== "boolean") {
         res.status(400).json({error: "Neispravni podaci."});
         return;
     }
@@ -96,13 +92,17 @@ app.post("/api/sql-injection", (req, res) => {
 });
 
 
+
 interface BruteForceSession {
     vulnerable: boolean;
-    failedAttempts: number;
-    locked: boolean;
     finished: boolean;
     attempts: number;
     createdAt: number;
+}
+
+interface TestAccount {
+    failedAttempts: number;
+    lockedUntil: number;
 }
 
 const bruteForceSessions = new Map<string, BruteForceSession>();
@@ -110,6 +110,12 @@ const bruteForceSessions = new Map<string, BruteForceSession>();
 const testUsername = "leon";
 const testPassword = "leon123";
 const maxAttempts = 3;
+const lockDuration = 5 * 60 * 1000;
+
+const testAccount: TestAccount = {
+    failedAttempts: 0,
+    lockedUntil: 0
+};
 
 const allowedPasswords = [
     "123456",
@@ -118,7 +124,6 @@ const allowedPasswords = [
     "abc123",
     "leon123"
 ];
-
 
 app.post("/api/brute-force/start", (req, res) => {
     const { vulnerable } = req.body ?? {};
@@ -140,8 +145,6 @@ app.post("/api/brute-force/start", (req, res) => {
 
     bruteForceSessions.set(sessionId, {
         vulnerable,
-        failedAttempts: 0,
-        locked: false,
         finished: false,
         attempts: 0,
         createdAt: now
@@ -154,14 +157,10 @@ app.post("/api/brute-force/start", (req, res) => {
     });
 });
 
-
 app.post("/api/brute-force/attempt", (req, res) => {
     const { sessionId, password } = req.body ?? {};
 
-    if (
-        typeof sessionId !== "string" ||
-        typeof password !== "string"
-    ) {
+    if (typeof sessionId !== "string" || typeof password !== "string") {
         res.status(400).json({ error: "Neispravni podaci" });
         return;
     }
@@ -185,41 +184,82 @@ app.post("/api/brute-force/attempt", (req, res) => {
 
     session.attempts++;
 
-    if (session.locked) {
-        session.finished = true;
+
+    if (session.vulnerable) {
+        if (password === testPassword) {
+            session.finished = true;
+
+            res.json({
+                status: "success",
+                message: "Lozinka je pogodena!"
+            });
+            return;
+        }
 
         res.json({
-            status: "locked",
-            message: "Racun je zakljucan.",
-            failedAttempts: session.failedAttempts
+            status: "failed",
+            message: "Pogresna lozinka."
         });
         return;
     }
 
+    const now = Date.now();
+
+    if (testAccount.lockedUntil > now) {
+        session.finished = true;
+
+        const seconds = Math.ceil((testAccount.lockedUntil - now) / 1000);
+
+        res.json({
+            status: "locked",
+            message: `Racun je zakljucan jos ${seconds} sekundi.`
+        });
+        return;
+    }
+
+    if (testAccount.lockedUntil !== 0) {
+        testAccount.failedAttempts = 0;
+        testAccount.lockedUntil = 0;
+    }
+
     if (password === testPassword) {
+        testAccount.failedAttempts = 0;
         session.finished = true;
 
         res.json({
             status: "success",
-            message: "Lozinka je pogodena!",
-            failedAttempts: session.failedAttempts
+            message: "Prijava uspjesna!"
         });
         return;
     }
 
-    session.failedAttempts++;
+    testAccount.failedAttempts++;
 
-    if (!session.vulnerable &&
-        session.failedAttempts >= maxAttempts) {
-        session.locked = true;
+    if (testAccount.failedAttempts >= maxAttempts) {
+        testAccount.lockedUntil = now + lockDuration;
+        session.finished = true;
+
+        res.json({
+            status: "locked",
+            message: "Tri pogresna pokusaja. Racun je zakljucan na 5 minuta."
+        });
+        return;
     }
 
     res.json({
         status: "failed",
-        message: session.locked
-            ? "Pogresna lozinka. Racun je sada zakljucan."
-            : "Pogresna lozinka.",
-        failedAttempts: session.failedAttempts
+        message: `Pogresna lozinka (${testAccount.failedAttempts}/${maxAttempts}).`
+    });
+});
+
+
+app.post("/api/brute-force/reset", (req, res) => {
+    testAccount.failedAttempts = 0;
+    testAccount.lockedUntil = 0;
+    bruteForceSessions.clear();
+
+    res.json({
+        message: "Testni racun je resetiran."
     });
 });
 
